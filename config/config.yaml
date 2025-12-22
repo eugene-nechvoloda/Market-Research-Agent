@@ -1,0 +1,100 @@
+schedule:
+  day_of_week: "monday"
+  time: "08:00"
+  timezone: "CET"
+
+research_timeframes:
+  general_news_days: 7
+  product_updates_days: 30
+  press_releases_current_month: true
+  user_reviews_days: 30
+
+competitors:
+  - name: "Pendo"
+    urls:
+      main: "https://www.pendo.io"
+      blog: "https://www.pendo.io/blog"
+      newsroom: "https://www.pendo.io/newsroom"
+      releases: "https://www.pendo.io/product/product-updates"
+      g2: "https://www.g2.com/products/pendo"
+      gartner: "https://www.gartner.com/reviews/market/digital-adoption-platforms/vendor/pendo"
+      case_studies: "https://www.pendo.io/customers"
+
+  - name: "WalkMe"
+    urls:
+      main: "https://www.walkme.com"
+      blog: "https://www.walkme.com/blog"
+      newsroom: "https://www.walkme.com/news"
+      releases: "https://www.walkme.com/release-notes"
+      g2: "https://www.g2.com/products/walkme"
+      gartner: "https://www.gartner.com/reviews/market/digital-adoption-platforms/vendor/walkme"
+      case_studies: "https://www.walkme.com/customers"
+
+  - name: "WhatFix"
+    urls:
+      main: "https://www.whatfix.com"
+      blog: "https://www.whatfix.com/blog"
+      newsroom: "https://www.whatfix.com/newsroom"
+      releases: "https://www.whatfix.com/product-updates"
+      g2: "https://www.g2.com/products/whatfix"
+      gartner: "https://www.gartner.com/reviews/market/digital-adoption-platforms/vendor/whatfix"
+      case_studies: "https://www.whatfix.com/customers"
+
+  - name: "Apty"
+    urls:
+      main: "https://www.apty.io"
+      blog: "https://www.apty.io/blog"
+      newsroom: "https://www.apty.io/news"
+      releases: "https://www.apty.io/product-updates"
+      g2: "https://www.g2.com/products/apty"
+      gartner: "https://www.gartner.com/reviews/market/digital-adoption-platforms/vendor/apty"
+      case_studies: "https://www.apty.io/customers"
+
+  - name: "Appcues"
+    urls:
+      main: "https://www.appcues.com"
+      blog: "https://www.appcues.com/blog"
+      newsroom: "https://www.appcues.com/news"
+      releases: "https://www.appcues.com/product-updates"
+      g2: "https://www.g2.com/products/appcues"
+      gartner: "https://www.gartner.com/reviews/market/digital-adoption-platforms/vendor/appcues"
+      case_studies: "https://www.appcues.com/customers"
+
+search_keywords:
+  broad_research:
+    - "DAP market trends 2025"
+    - "digital adoption platform news"
+    - "Pendo news"
+    - "WalkMe news"
+    - "WhatFix news"
+    - "Apty news"
+    - "Appcues news"
+    - "DAP market acquisitions"
+    - "DAP investment rounds"
+    - "digital adoption platform funding"
+    - "DAP market size"
+    - "digital adoption platform industry report"
+
+  competitor_metrics:
+    - "{competitor} revenue"
+    - "{competitor} valuation"
+    - "{competitor} funding"
+    - "{competitor} customer growth"
+    - "{competitor} churn rate"
+    - "{competitor} CrunchBase"
+
+  user_feedback:
+    - "{competitor} user reviews"
+    - "{competitor} Reddit feedback"
+    - "{competitor} LinkedIn reviews"
+    - "{competitor} customer feedback"
+    - "{competitor} user complaints"
+    - "{competitor} G2 reviews"
+    - "{competitor} Gartner reviews"
+
+output:
+  report_formats:
+    - "markdown"
+    - "html"
+    - "google_docs"
+  output_directory: "./reports"
