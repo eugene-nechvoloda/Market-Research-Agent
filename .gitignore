@@ -50,6 +50,7 @@ Thumbs.db
 # Google credentials
 *.json
 !config/*.yaml
+!railway.json
 
 # Temporary files
 *.tmp
