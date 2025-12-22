@@ -17,14 +17,15 @@ The agent uses:
 
 ## Features
 
-- Automated weekly execution on schedule
-- Multi-source data collection (APIs, web scraping, review platforms)
-- Intelligent time-aware filtering (7-day/30-day windows)
-- Deep analysis with Claude Sonnet 4.5
-- Professional report generation with GPT-5
-- Multiple output formats (Markdown, HTML, Google Docs)
-- Slack notifications with report summaries
-- Comprehensive logging and error handling
+- **Automated weekly execution** on schedule (Monday 8:00 AM CET)
+- **Multi-source data collection** (APIs, web scraping, review platforms)
+- **Intelligent time-aware filtering** (7-day/30-day windows)
+- **Deep analysis** with Claude Sonnet 4.5
+- **Professional report generation** with GPT-5
+- **Multiple output formats** (Markdown, HTML, Google Docs ready)
+- **Interactive Slack app** with commands and notifications
+- **Railway deployment ready** with one-click setup
+- **Comprehensive logging** and error handling
 
 ## Project Structure
 
@@ -107,7 +108,24 @@ Edit `config/config.yaml` to customize:
 
 ## Usage
 
-### Run Once (Immediate Execution)
+### Option 1: Slack App (Recommended)
+
+The easiest way to use the agent is through the Slack app:
+
+1. **Deploy to Railway** (see [DEPLOYMENT.md](DEPLOYMENT.md))
+2. **Configure Slack app** (see deployment guide)
+3. **Use Slack commands**:
+   - `/research help` - Show available commands
+   - `/research run` - Start research immediately
+   - `/research status` - Check agent status
+   - `/research latest` - Get the latest report
+   - `/research schedule` - View schedule info
+
+The Slack app provides an interactive UI with buttons, status updates, and automatic notifications when reports are ready.
+
+### Option 2: Command Line
+
+#### Run Once (Immediate Execution)
 
 ```bash
 python -m src.main --mode once
@@ -115,7 +133,7 @@ python -m src.main --mode once
 
 This runs the research immediately and generates a report.
 
-### Run on Schedule (Weekly on Monday 8:00 AM CET)
+#### Run on Schedule (Weekly on Monday 8:00 AM CET)
 
 ```bash
 python -m src.main --mode schedule
@@ -123,7 +141,7 @@ python -m src.main --mode schedule
 
 This starts the scheduler and waits for the configured time (Monday 8:00 AM CET).
 
-### Run Daily (Testing Mode)
+#### Run Daily (Testing Mode)
 
 ```bash
 python -m src.main --mode daily
@@ -131,13 +149,13 @@ python -m src.main --mode daily
 
 This schedules daily execution at the configured time for testing purposes.
 
-### Custom Configuration
+#### Custom Configuration
 
 ```bash
 python -m src.main --mode once --config path/to/custom/config.yaml
 ```
 
-### Using Run Scripts
+### Option 3: Using Run Scripts
 
 Linux/Mac:
 ```bash
@@ -153,6 +171,29 @@ run.bat once      # Run once
 run.bat schedule  # Run on schedule
 run.bat daily     # Run daily
 ```
+
+## Deployment
+
+### Railway (Recommended)
+
+Deploy to Railway with one click:
+
+1. **See [DEPLOYMENT.md](DEPLOYMENT.md)** for complete guide
+2. **Quick steps**:
+   - Push to GitHub
+   - Create Railway project from repo
+   - Add environment variables
+   - Deploy automatically
+
+Railway provides:
+- Always-on service
+- Automatic HTTPS
+- Easy scaling
+- Built-in monitoring
+
+### Local Development
+
+For local development and testing, see Installation section above.
 
 ## API Keys Required
 
@@ -178,10 +219,12 @@ run.bat daily     # Run daily
 
 ### 5. Slack App
 - Create Slack app at https://api.slack.com/apps
-- Add Bot Token Scopes: `chat:write`, `files:write`
+- Add Bot Token Scopes: `chat:write`, `files:write`, `commands`, `app_mentions:read`
+- Enable slash commands, events, and interactivity
 - Install app to workspace
-- Get Bot User OAuth Token
+- Get Bot User OAuth Token and Signing Secret
 - Get Channel ID where reports should be posted
+- **See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed Slack setup**
 
 ## Output
 
