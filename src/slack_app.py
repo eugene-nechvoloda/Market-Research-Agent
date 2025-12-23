@@ -12,6 +12,14 @@ from dotenv import load_dotenv
 # Import agent components
 from .main import MarketResearchAgent
 from .scheduler import ResearchScheduler
+from .report_store import ReportStore
+from .google_docs_export import GoogleDocsExporter
+from .slack_app_helpers import (
+    extract_executive_summary,
+    count_words,
+    markdown_to_slack_blocks,
+    truncate_text
+)
 
 # Load environment variables
 load_dotenv()
@@ -33,9 +41,12 @@ app = App(
 flask_app = Flask(__name__)
 handler = SlackRequestHandler(app)
 
-# Global agent instance
+# Global instances
 agent = None
 scheduler = None
+report_store = ReportStore()
+google_docs_exporter = GoogleDocsExporter()
+
 research_status = {
     "running": False,
     "last_run": None,
@@ -130,7 +141,7 @@ def get_help_message():
 
 def handle_run_research(respond, user_id):
     """Handle immediate research execution"""
-    global research_status, agent
+    global research_status, agent, report_store
 
     if research_status["running"]:
         respond({
@@ -179,41 +190,45 @@ def handle_run_research(respond, user_id):
             if result.get("report", {}).get("success"):
                 research_status["last_report"] = result["report"]["markdown_path"]
 
-                # Send success notification
-                app.client.chat_postMessage(
-                    channel=os.environ.get("SLACK_CHANNEL_ID"),
-                    text="✅ Research completed successfully!",
-                    blocks=[
-                        {
-                            "type": "header",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "✅ Market Research Completed"
-                            }
-                        },
-                        {
-                            "type": "section",
-                            "text": {
-                                "type": "mrkdwn",
-                                "text": f"*Duration:* {result['metadata'].get('duration_seconds', 0):.1f} seconds\n"
-                                       f"*Report Date:* {result['report']['date']}"
-                            }
-                        },
-                        {
-                            "type": "actions",
-                            "elements": [
-                                {
-                                    "type": "button",
-                                    "text": {
-                                        "type": "plain_text",
-                                        "text": "📄 View Report"
-                                    },
-                                    "action_id": "view_report",
-                                    "value": result["report"]["markdown_path"]
-                                }
-                            ]
-                        }
-                    ]
+                # Extract executive summary and word count
+                markdown_path = result["report"]["markdown_path"]
+                executive_summary = extract_executive_summary(markdown_path)
+                word_count = count_words(markdown_path)
+
+                # Try to export to Google Docs
+                google_docs_url = None
+                if google_docs_exporter.enabled:
+                    google_docs_url = google_docs_exporter.export_report(
+                        markdown_path,
+                        f"DAP Market Report - {result['report']['date']}"
+                    )
+                else:
+                    # Create placeholder URL for demo
+                    google_docs_url = google_docs_exporter.create_google_doc_placeholder(
+                        f"DAP Market Report",
+                        result['report']['date']
+                    )
+
+                # Add to report store
+                report_id = report_store.add_report(
+                    title=f"DAP Market Research Report - {result['report']['date']}",
+                    date=result['report']['date'],
+                    markdown_path=markdown_path,
+                    html_path=result["report"]["html_path"],
+                    executive_summary=executive_summary,
+                    word_count=word_count,
+                    google_docs_url=google_docs_url
+                )
+
+                # Send enhanced notification
+                send_report_notification(
+                    report_id=report_id,
+                    title=f"DAP Market Research Report",
+                    date=result['report']['date'],
+                    executive_summary=executive_summary,
+                    reading_time=max(1, round(word_count / 200)),
+                    google_docs_url=google_docs_url,
+                    duration=result['metadata'].get('duration_seconds', 0)
                 )
             else:
                 # Send error notification
@@ -387,7 +402,103 @@ def handle_latest_report(respond):
             logger.error(f"Failed to upload report: {str(e)}")
 
 
-# Action handler for view report button
+def send_report_notification(report_id, title, date, executive_summary, reading_time, google_docs_url, duration):
+    """Send enhanced report notification to channel"""
+    try:
+        app.client.chat_postMessage(
+            channel=os.environ.get("SLACK_CHANNEL_ID"),
+            text=f"✅ {title} - {date} is ready!",
+            blocks=[
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"📊 {title}"
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Date:*\n{date}"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Reading Time:*\n~{reading_time} min"
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Executive Summary:*\n{truncate_text(executive_summary, 500)}"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "📖 Read Full Report"
+                            },
+                            "style": "primary",
+                            "action_id": "open_report_tab",
+                            "value": report_id
+                        },
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "📄 Google Docs"
+                            },
+                            "url": google_docs_url,
+                            "action_id": "open_google_docs"
+                        }
+                    ]
+                },
+                {
+                    "type": "context",
+                    "elements": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"⏱️ Generated in {duration:.1f}s | Click 'Read Full Report' to view in the Reports tab"
+                        }
+                    ]
+                }
+            ]
+        )
+        logger.info(f"Sent enhanced notification for report {report_id}")
+    except Exception as e:
+        logger.error(f"Failed to send notification: {e}")
+
+
+# Action handler: Open report in Reports tab
+@app.action("open_report_tab")
+def handle_open_report_tab(ack, action, body, client):
+    """Handle opening report in Reports tab"""
+    ack()
+
+    report_id = action["value"]
+    user_id = body["user"]["id"]
+
+    # Open the app home and switch to Reports tab
+    try:
+        # Publish the home view with Reports tab active
+        publish_reports_tab(client, user_id, report_id)
+
+        logger.info(f"Opened report {report_id} for user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to open report tab: {e}")
+
+
+# Action handler for view report button (legacy)
 @app.action("view_report")
 def handle_view_report(ack, action, respond):
     """Handle view report button click"""
@@ -405,102 +516,254 @@ def handle_view_report(ack, action, respond):
         })
 
 
+# Action handler: View specific report
+@app.action("view_specific_report")
+def handle_view_specific_report(ack, action, body, client):
+    """Handle viewing a specific report from history"""
+    ack()
+
+    report_id = action["value"]
+    user_id = body["user"]["id"]
+
+    # Open report in Reports tab
+    publish_reports_tab(client, user_id, report_id)
+
+
+def publish_reports_tab(client, user_id, report_id=None):
+    """Publish Reports tab showing full report content"""
+    global report_store
+
+    if report_id:
+        # Show specific report
+        report = report_store.get_report(report_id)
+        if not report:
+            logger.error(f"Report {report_id} not found")
+            return
+
+        # Get report content
+        content = report_store.get_report_content(report_id, format="markdown")
+        if not content:
+            logger.error(f"Could not read report content for {report_id}")
+            return
+
+        # Convert markdown to Slack blocks
+        content_blocks = markdown_to_slack_blocks(content, max_blocks=45)
+
+        # Build view with report content
+        blocks = [
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{report['title']}*"
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"📅 {report['date']} • ⏱️ {report['reading_time_minutes']} min read • 📊 {report['word_count']:,} words"
+                    }
+                ]
+            },
+            {
+                "type": "divider"
+            }
+        ]
+
+        # Add report content blocks
+        blocks.extend(content_blocks)
+
+        # Add footer with actions
+        blocks.extend([
+            {
+                "type": "divider"
+            },
+            {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "📄 Open in Google Docs"
+                        },
+                        "url": report.get('google_docs_url', '#'),
+                        "action_id": "open_google_docs_from_tab"
+                    },
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "⬅️ Back to Reports"
+                        },
+                        "action_id": "back_to_reports_list",
+                        "value": "home"
+                    }
+                ]
+            }
+        ])
+
+        client.views_publish(
+            user_id=user_id,
+            view={
+                "type": "home",
+                "blocks": blocks
+            }
+        )
+    else:
+        # Show reports list (call main home tab)
+        update_home_tab(client, {"user": user_id}, logger)
+
+
+# Action handler: Back to reports list
+@app.action("back_to_reports_list")
+def handle_back_to_reports(ack, body, client):
+    """Handle back to reports list"""
+    ack()
+    user_id = body["user"]["id"]
+    update_home_tab(client, {"user": user_id}, logger)
+
+
 # Home tab
 @app.event("app_home_opened")
 def update_home_tab(client, event, logger):
     """Update the app home tab"""
     try:
-        # Get latest report info
-        reports_dir = Path("reports")
-        report_count = len(list(reports_dir.glob("*.md"))) if reports_dir.exists() else 0
+        tab = event.get("tab")
 
+        if tab == "messages":
+            # User opened messages tab - do nothing
+            return
+
+        # Get latest report info
+        report_count = report_store.get_reports_count()
         last_run = research_status.get("last_run", "Never")
         if last_run != "Never":
             last_run = datetime.fromisoformat(last_run).strftime("%Y-%m-%d %H:%M:%S")
+
+        # Get recent reports for quick links
+        recent_reports = report_store.get_all_reports(limit=5)
+
+        # Build home tab blocks
+        blocks = [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "📊 DAP Market Research Agent"
+                }
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "Welcome! This bot conducts comprehensive weekly market research on the Digital Adoption Platform landscape."
+                }
+            },
+            {
+                "type": "divider"
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*📈 Quick Stats*"
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Reports:*\n{report_count} total"
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Last Run:*\n{last_run}"
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": "*Schedule:*\nMonday 8:00 AM CET"
+                    },
+                    {
+                        "type": "mrkdwn",
+                        "text": f"*Status:*\n{'🔄 Running' if research_status['running'] else '✅ Idle'}"
+                    }
+                ]
+            },
+            {
+                "type": "divider"
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*📚 Recent Reports*"
+                }
+            }
+        ]
+
+        # Add recent reports
+        if recent_reports:
+            for report in recent_reports:
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*{report['title']}*\n{report['date']} • {report['reading_time_minutes']} min read"
+                    },
+                    "accessory": {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "📖 Read"
+                        },
+                        "action_id": "view_specific_report",
+                        "value": report['id']
+                    }
+                })
+        else:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "_No reports yet. Run `/research run` to generate your first report!_"
+                }
+            })
+
+        blocks.extend([
+            {
+                "type": "divider"
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*🚀 Quick Commands*\n\n"
+                           "`/research run` - Start research now\n"
+                           "`/research status` - Check agent status\n"
+                           "`/research latest` - Get latest report\n"
+                           "`/research help` - Show all commands"
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "💡 Monitoring: Pendo, WalkMe, WhatFix, Apty, Appcues"
+                    }
+                ]
+            }
+        ])
 
         client.views_publish(
             user_id=event["user"],
             view={
                 "type": "home",
-                "blocks": [
-                    {
-                        "type": "header",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "📊 DAP Market Research Agent"
-                        }
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "Welcome to the DAP Market Research Agent! This bot automatically conducts comprehensive weekly market research on the Digital Adoption Platform landscape."
-                        }
-                    },
-                    {
-                        "type": "divider"
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "*📈 Quick Stats*"
-                        }
-                    },
-                    {
-                        "type": "section",
-                        "fields": [
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Reports Generated:*\n{report_count}"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Last Run:*\n{last_run}"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": "*Schedule:*\nMonday 8:00 AM CET"
-                            },
-                            {
-                                "type": "mrkdwn",
-                                "text": f"*Status:*\n{'🔄 Running' if research_status['running'] else '✅ Idle'}"
-                            }
-                        ]
-                    },
-                    {
-                        "type": "divider"
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "*🚀 Quick Actions*\n\nUse these commands to interact with the agent:"
-                        }
-                    },
-                    {
-                        "type": "section",
-                        "text": {
-                            "type": "mrkdwn",
-                            "text": "`/research run` - Run research now\n"
-                                   "`/research status` - Check status\n"
-                                   "`/research latest` - Get latest report\n"
-                                   "`/research help` - Show all commands"
-                        }
-                    },
-                    {
-                        "type": "divider"
-                    },
-                    {
-                        "type": "context",
-                        "elements": [
-                            {
-                                "type": "mrkdwn",
-                                "text": "💡 The agent monitors 5 competitors: Pendo, WalkMe, WhatFix, Apty, Appcues"
-                            }
-                        ]
-                    }
-                ]
+                "blocks": blocks
             }
         )
     except Exception as e:
