@@ -774,6 +774,12 @@ def update_home_tab(client, event, logger):
 @flask_app.route("/slack/events", methods=["POST"])
 def slack_events():
     """Handle Slack events"""
+    # Handle Slack URL verification challenge
+    if request.json and "challenge" in request.json:
+        logger.info("Received Slack challenge request")
+        return {"challenge": request.json["challenge"]}
+
+    # Handle all other Slack events
     return handler.handle(request)
 
 
