@@ -803,17 +803,17 @@ def main():
     """Main entry point for Slack app"""
     logger.info("Starting DAP Market Research Agent Slack App...")
 
-    # Initialize agent
+    # Try to initialize agent (optional - can be initialized later)
     if not initialize_agent():
-        logger.error("Failed to initialize agent. Exiting.")
-        return
+        logger.warning("Failed to initialize agent. App will start anyway.")
+        logger.warning("Agent will be initialized when needed (requires all API keys).")
 
     # Get port from environment (Railway sets this)
     port = int(os.environ.get("PORT", 3000))
 
     logger.info(f"Slack app starting on port {port}")
 
-    # Run Flask app
+    # Run Flask app (starts even if agent initialization failed)
     flask_app.run(host="0.0.0.0", port=port)
 
 
