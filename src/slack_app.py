@@ -639,9 +639,16 @@ def update_home_tab(client, event, logger):
 
         # Get latest report info
         report_count = report_store.get_reports_count()
-        last_run = research_status.get("last_run", "Never")
-        if last_run != "Never":
-            last_run = datetime.fromisoformat(last_run).strftime("%Y-%m-%d %H:%M:%S")
+        last_run = research_status.get("last_run")
+
+        # Format last run time safely
+        if last_run and isinstance(last_run, str):
+            try:
+                last_run = datetime.fromisoformat(last_run).strftime("%Y-%m-%d %H:%M:%S")
+            except (ValueError, TypeError):
+                last_run = "Never"
+        else:
+            last_run = "Never"
 
         # Get recent reports for quick links
         recent_reports = report_store.get_all_reports(limit=5)
