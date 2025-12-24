@@ -20,6 +20,7 @@ from .slack_app_helpers import (
     markdown_to_slack_blocks,
     truncate_text
 )
+from .home_tab_views import build_reports_view, build_settings_view
 
 # Load environment variables
 load_dotenv()
