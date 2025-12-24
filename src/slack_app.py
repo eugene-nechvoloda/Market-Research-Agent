@@ -619,163 +619,260 @@ def publish_reports_tab(client, user_id, report_id=None):
 
 
 # Action handler: Back to reports list
+# Action handler: Back to reports list
 @app.action("back_to_reports_list")
 def handle_back_to_reports(ack, body, client):
     """Handle back to reports list"""
     ack()
     user_id = body["user"]["id"]
-    update_home_tab(client, {"user": user_id}, logger)
+    publish_reports_tab_view(client, user_id)
 
 
 # Home tab
 @app.event("app_home_opened")
 def update_home_tab(client, event, logger):
-    """Update the app home tab"""
+    """Update the app home tab - default to Reports view"""
     try:
-        tab = event.get("tab")
+        publish_reports_tab_view(client, event["user"])
+    except Exception as e:
+        logger.error(f"Error publishing home tab: {e}")
 
-        if tab == "messages":
-            # User opened messages tab - do nothing
-            return
 
-        # Get latest report info
-        report_count = report_store.get_reports_count()
-        last_run = research_status.get("last_run")
-
-        # Format last run time safely
-        if last_run and isinstance(last_run, str):
-            try:
-                last_run = datetime.fromisoformat(last_run).strftime("%Y-%m-%d %H:%M:%S")
-            except (ValueError, TypeError):
-                last_run = "Never"
-        else:
-            last_run = "Never"
-
-        # Get recent reports for quick links
-        recent_reports = report_store.get_all_reports(limit=5)
-
-        # Build home tab blocks
-        blocks = [
-            {
-                "type": "header",
-                "text": {
-                    "type": "plain_text",
-                    "text": "📊 DAP Market Research Agent"
-                }
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "Welcome! This bot conducts comprehensive weekly market research on the Digital Adoption Platform landscape."
-                }
-            },
-            {
-                "type": "divider"
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*📈 Quick Stats*"
-                }
-            },
-            {
-                "type": "section",
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Reports:*\n{report_count} total"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Last Run:*\n{last_run}"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": "*Schedule:*\nMonday 8:00 AM CET"
-                    },
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*Status:*\n{'🔄 Running' if research_status['running'] else '✅ Idle'}"
-                    }
-                ]
-            },
-            {
-                "type": "divider"
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*📚 Recent Reports*"
-                }
-            }
-        ]
-
-        # Add recent reports
-        if recent_reports:
-            for report in recent_reports:
-                blocks.append({
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{report['title']}*\n{report['date']} • {report['reading_time_minutes']} min read"
-                    },
-                    "accessory": {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "📖 Read"
-                        },
-                        "action_id": "view_specific_report",
-                        "value": report['id']
-                    }
-                })
-        else:
-            blocks.append({
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "_No reports yet. Run `/research run` to generate your first report!_"
-                }
-            })
-
-        blocks.extend([
-            {
-                "type": "divider"
-            },
-            {
-                "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": "*🚀 Quick Commands*\n\n"
-                           "`/research run` - Start research now\n"
-                           "`/research status` - Check agent status\n"
-                           "`/research latest` - Get latest report\n"
-                           "`/research help` - Show all commands"
-                }
-            },
-            {
-                "type": "context",
-                "elements": [
-                    {
-                        "type": "mrkdwn",
-                        "text": "💡 Monitoring: Pendo, WalkMe, WhatFix, Apty, Appcues"
-                    }
-                ]
-            }
-        ])
+def publish_reports_tab_view(client, user_id):
+    """Publish Reports tab view"""
+    try:
+        blocks = build_reports_view(report_store, research_status)
 
         client.views_publish(
-            user_id=event["user"],
+            user_id=user_id,
             view={
                 "type": "home",
                 "blocks": blocks
             }
         )
+        logger.info(f"Published Reports view for user {user_id}")
     except Exception as e:
-        logger.error(f"Error publishing home tab: {e}")
+        logger.error(f"Error publishing Reports view: {e}")
+
+
+def publish_settings_tab_view(client, user_id):
+    """Publish Settings tab view"""
+    try:
+        blocks = build_settings_view(research_status)
+
+        client.views_publish(
+            user_id=user_id,
+            view={
+                "type": "home",
+                "blocks": blocks
+            }
+        )
+        logger.info(f"Published Settings view for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error publishing Settings view: {e}")
+
+
+# Action handler: Switch to Settings tab
+@app.action("switch_to_settings")
+def handle_switch_to_settings(ack, body, client):
+    """Switch to Settings view"""
+    ack()
+    user_id = body["user"]["id"]
+    publish_settings_tab_view(client, user_id)
+
+
+# Action handler: Switch to Reports tab
+@app.action("switch_to_reports")
+def handle_switch_to_reports(ack, body, client):
+    """Switch to Reports view"""
+    ack()
+    user_id = body["user"]["id"]
+    publish_reports_tab_view(client, user_id)
+
+
+# Action handler: Manual generate report
+@app.action("manual_generate_report")
+def handle_manual_generate(ack, body, client):
+    """Handle manual report generation from Home tab"""
+    ack()
+    user_id = body["user"]["id"]
+
+    # Trigger research
+    if research_status["running"]:
+        client.chat_postEphemeral(
+            channel=user_id,
+            user=user_id,
+            text="❌ Research is already running. Please wait for it to complete."
+        )
+        return
+
+    client.chat_postMessage(
+        channel=os.environ.get("SLACK_CHANNEL_ID"),
+        text=f"🚀 Research started by <@{user_id}> from Home tab"
+    )
+
+    # Run research in background
+    def run_research_task():
+        global research_status
+        try:
+            research_status["running"] = True
+            research_status["last_run"] = datetime.now().isoformat()
+
+            if agent is None:
+                initialize_agent()
+
+            result = agent.run_research()
+            research_status["running"] = False
+
+            if result.get("report", {}).get("success"):
+                research_status["last_report"] = result["report"]["markdown_path"]
+
+                markdown_path = result["report"]["markdown_path"]
+                executive_summary = extract_executive_summary(markdown_path)
+                word_count = count_words(markdown_path)
+
+                google_docs_url = None
+                if google_docs_exporter.enabled:
+                    google_docs_url = google_docs_exporter.export_report(
+                        markdown_path,
+                        f"DAP Market Report - {result['report']['date']}"
+                    )
+                else:
+                    google_docs_url = google_docs_exporter.create_google_doc_placeholder(
+                        f"DAP Market Report",
+                        result['report']['date']
+                    )
+
+                report_id = report_store.add_report(
+                    title=f"DAP Market Research Report - {result['report']['date']}",
+                    date=result['report']['date'],
+                    markdown_path=markdown_path,
+                    html_path=result["report"]["html_path"],
+                    executive_summary=executive_summary,
+                    word_count=word_count,
+                    google_docs_url=google_docs_url
+                )
+
+                send_report_notification(
+                    report_id=report_id,
+                    title=f"DAP Market Research Report",
+                    date=result['report']['date'],
+                    executive_summary=executive_summary,
+                    reading_time=max(1, round(word_count / 200)),
+                    google_docs_url=google_docs_url,
+                    duration=result['metadata'].get('duration_seconds', 0)
+                )
+            else:
+                app.client.chat_postMessage(
+                    channel=os.environ.get("SLACK_CHANNEL_ID"),
+                    text="❌ Research failed. Check logs for details."
+                )
+
+        except Exception as e:
+            logger.error(f"Research execution failed: {str(e)}", exc_info=True)
+            research_status["running"] = False
+            app.client.chat_postMessage(
+                channel=os.environ.get("SLACK_CHANNEL_ID"),
+                text=f"❌ Research failed with error: {str(e)}"
+            )
+
+    thread = threading.Thread(target=run_research_task)
+    thread.daemon = True
+    thread.start()
+
+
+# Action handler: Open schedule modification modal
+@app.action("open_schedule_modal")
+def handle_open_schedule_modal(ack, body, client):
+    """Open modal for modifying schedule"""
+    ack()
+
+    client.views_open(
+        trigger_id=body["trigger_id"],
+        view={
+            "type": "modal",
+            "callback_id": "schedule_modify_modal",
+            "title": {"type": "plain_text", "text": "Modify Schedule"},
+            "submit": {"type": "plain_text", "text": "Save"},
+            "close": {"type": "plain_text", "text": "Cancel"},
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {"type": "mrkdwn", "text": "*Configure Research Schedule*"}
+                },
+                {
+                    "type": "input",
+                    "block_id": "frequency_block",
+                    "element": {
+                        "type": "static_select",
+                        "action_id": "frequency_select",
+                        "placeholder": {"type": "plain_text", "text": "Select frequency"},
+                        "initial_option": {"text": {"type": "plain_text", "text": "Weekly"}, "value": "weekly"},
+                        "options": [
+                            {"text": {"type": "plain_text", "text": "Daily"}, "value": "daily"},
+                            {"text": {"type": "plain_text", "text": "Weekly"}, "value": "weekly"},
+                            {"text": {"type": "plain_text", "text": "Bi-weekly"}, "value": "biweekly"},
+                            {"text": {"type": "plain_text", "text": "Monthly"}, "value": "monthly"}
+                        ]
+                    },
+                    "label": {"type": "plain_text", "text": "Frequency"}
+                },
+                {
+                    "type": "input",
+                    "block_id": "day_block",
+                    "element": {
+                        "type": "static_select",
+                        "action_id": "day_select",
+                        "placeholder": {"type": "plain_text", "text": "Select day"},
+                        "initial_option": {"text": {"type": "plain_text", "text": "Monday"}, "value": "monday"},
+                        "options": [
+                            {"text": {"type": "plain_text", "text": "Monday"}, "value": "monday"},
+                            {"text": {"type": "plain_text", "text": "Tuesday"}, "value": "tuesday"},
+                            {"text": {"type": "plain_text", "text": "Wednesday"}, "value": "wednesday"},
+                            {"text": {"type": "plain_text", "text": "Thursday"}, "value": "thursday"},
+                            {"text": {"type": "plain_text", "text": "Friday"}, "value": "friday"},
+                            {"text": {"type": "plain_text", "text": "Saturday"}, "value": "saturday"},
+                            {"text": {"type": "plain_text", "text": "Sunday"}, "value": "sunday"}
+                        ]
+                    },
+                    "label": {"type": "plain_text", "text": "Day of Week"}
+                },
+                {
+                    "type": "input",
+                    "block_id": "time_block",
+                    "element": {
+                        "type": "timepicker",
+                        "action_id": "time_select",
+                        "initial_time": "08:00",
+                        "placeholder": {"type": "plain_text", "text": "Select time"}
+                    },
+                    "label": {"type": "plain_text", "text": "Time (CET)"}
+                }
+            ]
+        }
+    )
+
+
+# View submission handler: Schedule modification
+@app.view("schedule_modify_modal")
+def handle_schedule_modification(ack, body, client, view):
+    """Handle schedule modification submission"""
+    ack()
+
+    values = view["state"]["values"]
+    frequency = values["frequency_block"]["frequency_select"]["selected_option"]["value"]
+    day = values["day_block"]["day_select"]["selected_option"]["value"]
+    time = values["time_block"]["time_select"]["selected_time"]
+
+    user_id = body["user"]["id"]
+
+    client.chat_postEphemeral(
+        channel=user_id,
+        user=user_id,
+        text=f"✅ Schedule updated!\n\n*Frequency:* {frequency}\n*Day:* {day}\n*Time:* {time} CET\n\n_Note: Scheduler will be updated on next deployment._"
+    )
+
+    publish_settings_tab_view(client, user_id)
 
 
 # Flask routes for Railway
