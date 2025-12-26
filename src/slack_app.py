@@ -888,15 +888,26 @@ def slack_events():
     return handler.handle(request)
 
 
+@flask_app.route("/slack/actions", methods=["POST"])
+def slack_actions():
+    """Handle Slack interactive components (buttons, modals, etc.)"""
+    return handler.handle(request)
+
+
 @flask_app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint for Railway"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 
-@flask_app.route("/", methods=["GET"])
+@flask_app.route("/", methods=["GET", "POST"])
 def home():
-    """Home endpoint"""
+    """Home endpoint - route POST requests to Slack handler"""
+    if request.method == "POST":
+        # Route Slack requests that come to root
+        logger.info("Received POST to / - routing to Slack handler")
+        return handler.handle(request)
+
     return {
         "name": "DAP Market Research Agent",
         "status": "running",
