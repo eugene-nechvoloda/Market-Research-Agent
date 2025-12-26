@@ -789,8 +789,25 @@ def handle_manual_generate(ack, body, client):
     def run_research_task():
         global research_status
         try:
+            # Check if agent is initialized, try to initialize if not
             if agent is None:
-                initialize_agent()
+                if not initialize_agent():
+                    # Agent initialization failed - likely missing API keys
+                    research_status["running"] = False
+                    publish_reports_tab_view(client, user_id)
+                    client.chat_postEphemeral(
+                        channel=user_id,
+                        user=user_id,
+                        text="❌ *Research Failed - Missing API Keys*\n\n"
+                             "Cannot start research because required API keys are not configured.\n\n"
+                             "*Required Environment Variables in Railway:*\n"
+                             "• `ANTHROPIC_API_KEY` - For Claude Sonnet 4.5 analysis\n"
+                             "• `OPENAI_API_KEY` - For GPT report generation\n"
+                             "• `PERPLEXITY_API_KEY` - For market research\n"
+                             "• `SERPAPI_API_KEY` - For web search\n\n"
+                             "Please add these to your Railway project settings and redeploy."
+                    )
+                    return
 
             # Send progress updates
             client.chat_postEphemeral(
