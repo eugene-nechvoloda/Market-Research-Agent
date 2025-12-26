@@ -90,6 +90,30 @@ def build_reports_view(report_store, research_status):
         }
     ]
 
+    # Show progress indicator if research is running
+    if research_status.get("running"):
+        blocks.extend([
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "🔄 *Research in Progress*\n\nGenerating market research report... This takes 5-15 minutes.\nYou'll receive a notification when it's complete."
+                }
+            },
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "⏳ Please wait... You can continue using Slack normally."
+                    }
+                ]
+            },
+            {
+                "type": "divider"
+            }
+        ])
+
     # Report grid
     if reports:
         blocks.append({

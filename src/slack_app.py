@@ -403,6 +403,73 @@ def handle_latest_report(respond):
             logger.error(f"Failed to upload report: {str(e)}")
 
 
+def send_user_notification(client, user_id, report_id, title, date, executive_summary, reading_time, google_docs_url, duration):
+    """Send report completion notification directly to user via ephemeral message"""
+    try:
+        client.chat_postEphemeral(
+            channel=user_id,
+            user=user_id,
+            text=f"✅ {title} - {date} is ready!",
+            blocks=[
+                {
+                    "type": "header",
+                    "text": {
+                        "type": "plain_text",
+                        "text": f"✅ {title} Complete!"
+                    }
+                },
+                {
+                    "type": "section",
+                    "fields": [
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Date:*\n{date}"
+                        },
+                        {
+                            "type": "mrkdwn",
+                            "text": f"*Reading Time:*\n~{reading_time} min"
+                        }
+                    ]
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"*Executive Summary:*\n{truncate_text(executive_summary, 400)}"
+                    }
+                },
+                {
+                    "type": "divider"
+                },
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": f"⏱️ *Generated in {duration:.1f}s*\n\n📊 Your report is now available in the *Reports* tab of the app home. Click the button below to view it."
+                    }
+                },
+                {
+                    "type": "actions",
+                    "elements": [
+                        {
+                            "type": "button",
+                            "text": {
+                                "type": "plain_text",
+                                "text": "📖 View Report"
+                            },
+                            "style": "primary",
+                            "action_id": "open_report_tab",
+                            "value": report_id
+                        }
+                    ]
+                }
+            ]
+        )
+        logger.info(f"Sent user notification for report {report_id} to user {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to send user notification: {e}")
+
+
 def send_report_notification(report_id, title, date, executive_summary, reading_time, google_docs_url, duration):
     """Send enhanced report notification to channel"""
     try:
@@ -706,20 +773,31 @@ def handle_manual_generate(ack, body, client):
         )
         return
 
-    client.chat_postMessage(
-        channel=os.environ.get("SLACK_CHANNEL_ID"),
-        text=f"🚀 Research started by <@{user_id}> from Home tab"
+    # Send immediate feedback to user
+    client.chat_postEphemeral(
+        channel=user_id,
+        user=user_id,
+        text="🚀 *Research Started!*\n\nYour market research report is being generated. This takes 5-15 minutes.\n\n*Progress:*\n⏳ Step 1/6: Broad market research...\n\nI'll notify you when it's complete. You can continue using Slack normally."
     )
+
+    # Update home tab to show "In Progress" status
+    research_status["running"] = True
+    research_status["last_run"] = datetime.now().isoformat()
+    publish_reports_tab_view(client, user_id)
 
     # Run research in background
     def run_research_task():
         global research_status
         try:
-            research_status["running"] = True
-            research_status["last_run"] = datetime.now().isoformat()
-
             if agent is None:
                 initialize_agent()
+
+            # Send progress updates
+            client.chat_postEphemeral(
+                channel=user_id,
+                user=user_id,
+                text="⏳ *Step 2/6:* Competitor analysis in progress..."
+            )
 
             result = agent.run_research()
             research_status["running"] = False
@@ -753,7 +831,13 @@ def handle_manual_generate(ack, body, client):
                     google_docs_url=google_docs_url
                 )
 
-                send_report_notification(
+                # Update home tab with new report
+                publish_reports_tab_view(client, user_id)
+
+                # Send completion notification to user
+                send_user_notification(
+                    client=client,
+                    user_id=user_id,
                     report_id=report_id,
                     title=f"DAP Market Research Report",
                     date=result['report']['date'],
@@ -762,17 +846,35 @@ def handle_manual_generate(ack, body, client):
                     google_docs_url=google_docs_url,
                     duration=result['metadata'].get('duration_seconds', 0)
                 )
+
+                # Also send to channel if configured
+                channel_id = os.environ.get("SLACK_CHANNEL_ID")
+                if channel_id:
+                    send_report_notification(
+                        report_id=report_id,
+                        title=f"DAP Market Research Report",
+                        date=result['report']['date'],
+                        executive_summary=executive_summary,
+                        reading_time=max(1, round(word_count / 200)),
+                        google_docs_url=google_docs_url,
+                        duration=result['metadata'].get('duration_seconds', 0)
+                    )
             else:
-                app.client.chat_postMessage(
-                    channel=os.environ.get("SLACK_CHANNEL_ID"),
+                research_status["running"] = False
+                publish_reports_tab_view(client, user_id)
+                client.chat_postEphemeral(
+                    channel=user_id,
+                    user=user_id,
                     text="❌ Research failed. Check logs for details."
                 )
 
         except Exception as e:
             logger.error(f"Research execution failed: {str(e)}", exc_info=True)
             research_status["running"] = False
-            app.client.chat_postMessage(
-                channel=os.environ.get("SLACK_CHANNEL_ID"),
+            publish_reports_tab_view(client, user_id)
+            client.chat_postEphemeral(
+                channel=user_id,
+                user=user_id,
                 text=f"❌ Research failed with error: {str(e)}"
             )
 
