@@ -11,12 +11,7 @@ class ClaudeClient:
     """Client for interacting with Anthropic Claude API"""
 
     def __init__(self, api_key: Optional[str] = None):
-        # Support both naming conventions: ANTHROPIC_API_KEY and AI_INTEGRATIONS_ANTHROPIC_API_KEY
-        self.api_key = (
-            api_key or
-            os.getenv("ANTHROPIC_API_KEY") or
-            os.getenv("AI_INTEGRATIONS_ANTHROPIC_API_KEY")
-        )
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
 
         if not self.api_key:
             raise ValueError("Anthropic API key not provided")

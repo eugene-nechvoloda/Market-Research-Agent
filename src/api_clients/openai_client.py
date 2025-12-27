@@ -11,12 +11,7 @@ class OpenAIClient:
     """Client for interacting with OpenAI API"""
 
     def __init__(self, api_key: Optional[str] = None):
-        # Support both naming conventions: OPENAI_API_KEY and AI_INTEGRATIONS_OPENAI_API_KEY
-        self.api_key = (
-            api_key or
-            os.getenv("OPENAI_API_KEY") or
-            os.getenv("AI_INTEGRATIONS_OPENAI_API_KEY")
-        )
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
 
         if not self.api_key:
             raise ValueError("OpenAI API key not provided")
