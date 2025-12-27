@@ -32,7 +32,11 @@ def calculate_next_monday_8am():
 
 def build_reports_view(report_store, research_status):
     """Build the Reports tab view"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     reports = report_store.get_all_reports()
+    logger.info(f"🏠 Building Reports view with {len(reports)} reports")
 
     blocks = [
         # Navigation

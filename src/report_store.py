@@ -124,7 +124,12 @@ class ReportStore:
                 ))
                 conn.commit()
 
-            logger.info(f"Added report to database: {report_id}")
+                # Verify insertion
+                cur.execute("SELECT COUNT(*) FROM market_reports")
+                total_count = cur.fetchone()[0]
+                logger.info(f"✅ Added report to database: {report_id}")
+                logger.info(f"📊 Total reports in database: {total_count}")
+
             return report_id
 
         except Exception as e:
@@ -161,10 +166,12 @@ class ReportStore:
     def get_all_reports(self, limit: Optional[int] = None) -> List[Dict]:
         """Get all reports (newest first)"""
         if not self.database_url:
+            logger.warning("No database URL - returning empty list")
             return []
 
         conn = self._get_connection()
         if not conn:
+            logger.error("Failed to get database connection")
             return []
 
         try:
@@ -180,9 +187,21 @@ class ReportStore:
 
                 cur.execute(query)
                 rows = cur.fetchall()
-                return [dict(row) for row in rows]
+
+                # Convert to list of dicts and format timestamps
+                reports = []
+                for row in rows:
+                    report_dict = dict(row)
+                    # Convert timestamp to ISO format string if it's a datetime object
+                    if 'timestamp' in report_dict and report_dict['timestamp']:
+                        if hasattr(report_dict['timestamp'], 'isoformat'):
+                            report_dict['timestamp'] = report_dict['timestamp'].isoformat()
+                    reports.append(report_dict)
+
+                logger.info(f"Retrieved {len(reports)} reports from database")
+                return reports
         except Exception as e:
-            logger.error(f"Error getting all reports: {e}")
+            logger.error(f"Error getting all reports: {e}", exc_info=True)
             return []
         finally:
             conn.close()
