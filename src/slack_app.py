@@ -686,13 +686,25 @@ def publish_reports_tab(client, user_id, report_id=None):
 
 
 # Action handler: Back to reports list
-# Action handler: Back to reports list
 @app.action("back_to_reports_list")
 def handle_back_to_reports(ack, body, client):
     """Handle back to reports list"""
     ack()
     user_id = body["user"]["id"]
     publish_reports_tab_view(client, user_id)
+
+
+# Action handler: Google Docs buttons (URL buttons - just acknowledge)
+@app.action("open_google_docs")
+def handle_open_google_docs(ack):
+    """Acknowledge Google Docs button click (opens URL)"""
+    ack()
+
+
+@app.action("open_google_docs_from_tab")
+def handle_open_google_docs_from_tab(ack):
+    """Acknowledge Google Docs button click from tab (opens URL)"""
+    ack()
 
 
 # Home tab

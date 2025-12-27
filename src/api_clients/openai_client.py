@@ -17,9 +17,8 @@ class OpenAIClient:
             raise ValueError("OpenAI API key not provided")
 
         self.client = OpenAI(api_key=self.api_key)
-        # Note: GPT-5 model name - update when available
-        # For now using latest available model
-        self.model = "gpt-4-turbo-preview"  # Update to "gpt-5" when available
+        # Use GPT-4 Turbo with higher token limit
+        self.model = "gpt-4-turbo"  # Supports up to 4096 completion tokens
 
     def generate_report(
         self,
@@ -63,7 +62,7 @@ Follow the structure exactly and adhere to all rules and guidelines provided."""
                     {"role": "user", "content": user_message}
                 ],
                 temperature=0.4,
-                max_tokens=16000
+                max_tokens=4096  # GPT-4 Turbo max completion tokens
             )
 
             report = response.choices[0].message.content
