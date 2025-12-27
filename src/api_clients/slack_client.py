@@ -17,8 +17,11 @@ class SlackClient:
 
         if not self.token:
             raise ValueError("Slack bot token not provided")
+
+        # Channel ID is now optional - only needed for channel notifications
+        # If not provided, only direct message functionality will be available
         if not self.channel_id:
-            raise ValueError("Slack channel ID not provided")
+            logger.warning("Slack channel ID not provided - channel notifications disabled")
 
         self.client = WebClient(token=self.token)
 
@@ -33,6 +36,10 @@ class SlackClient:
         Returns:
             Response from Slack API
         """
+        if not self.channel_id:
+            logger.warning("Cannot send message: Slack channel ID not configured")
+            return {"success": False, "error": "Channel ID not configured"}
+
         try:
             response = self.client.chat_postMessage(
                 channel=self.channel_id,
@@ -116,6 +123,10 @@ class SlackClient:
         Returns:
             Response from Slack API
         """
+        if not self.channel_id:
+            logger.warning("Cannot upload file: Slack channel ID not configured")
+            return {"success": False, "error": "Channel ID not configured"}
+
         try:
             response = self.client.files_upload_v2(
                 channel=self.channel_id,
