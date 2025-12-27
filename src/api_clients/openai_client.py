@@ -17,8 +17,8 @@ class OpenAIClient:
             raise ValueError("OpenAI API key not provided")
 
         self.client = OpenAI(api_key=self.api_key)
-        # Use GPT-4 Turbo with 128k context window
-        self.model = "gpt-4-turbo"  # Supports up to 128k context, using 16k for completions
+        # Use GPT-4 Turbo: 128k input context, 4096 max output tokens
+        self.model = "gpt-4-turbo"
 
     def generate_report(
         self,
@@ -42,11 +42,11 @@ class OpenAIClient:
         try:
             logger.info("Starting GPT-4 Turbo report generation...")
 
-            # Format research data in a structured way
+            # Format research data efficiently with JSON
             import json
             formatted_data = json.dumps(research_data, indent=2, default=str)
 
-            user_message = f"""Generate a comprehensive DAP market research report based on the following:
+            user_message = f"""Generate a comprehensive DAP market research report.
 
 === RESEARCH DATA ===
 {formatted_data}
@@ -57,16 +57,15 @@ class OpenAIClient:
 === REPORT STRUCTURE ===
 {report_template}
 
-CRITICAL INSTRUCTIONS:
-1. Fill EVERY section with available data - don't leave sections empty unless NO data exists
-2. Use data from "broad_research", "competitor_analysis", and "user_feedback" to populate competitor sections
-3. Extract Strategic Moves, Product Updates, Partnerships from the research data even if not explicitly labeled
-4. Use Claude's analysis results to fill Strategic Insights sections
-5. If specific data isn't categorized perfectly, intelligently map it to the appropriate section
-6. Only use "*No new updates this week.*" if genuinely no relevant data exists for that section
-7. Prioritize USING available data over leaving sections empty
+CRITICAL INSTRUCTIONS (Priority: Fill sections efficiently within token limit):
+1. Fill ALL sections with available data - extract info from broad_research, competitor_analysis, user_feedback
+2. Map data intelligently even if not perfectly categorized (e.g., blog posts → Product Updates, news → Strategic Moves)
+3. Use Claude's analysis for Strategic Insights (30/60/90 day recommendations)
+4. Be concise but comprehensive - prioritize substance over length
+5. Only write "*No new updates this week.*" when genuinely no data exists
+6. Focus on completing ALL sections rather than making some sections extremely long
 
-Follow the structure exactly and adhere to all rules and guidelines provided."""
+Structure: Follow template exactly. Quality over quantity in each section."""
 
             response = self.client.chat.completions.create(
                 model=self.model,
@@ -75,7 +74,7 @@ Follow the structure exactly and adhere to all rules and guidelines provided."""
                     {"role": "user", "content": user_message}
                 ],
                 temperature=0.4,
-                max_tokens=16000  # Increase to allow full report generation
+                max_tokens=4096  # GPT-4 Turbo maximum for completions
             )
 
             report = response.choices[0].message.content
