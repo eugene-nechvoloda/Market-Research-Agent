@@ -1,7 +1,7 @@
-"""Report storage and management"""
-import json
+"""Report storage and management using Postgres"""
 import os
-from pathlib import Path
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from datetime import datetime
 from typing import Dict, List, Optional
 import logging
@@ -10,35 +10,57 @@ logger = logging.getLogger(__name__)
 
 
 class ReportStore:
-    """Manages report metadata and storage"""
+    """Manages report metadata and storage in Postgres"""
 
-    def __init__(self, storage_path: str = "reports/reports_index.json"):
-        self.storage_path = storage_path
-        self.reports_dir = Path("reports")
-        self.reports_dir.mkdir(exist_ok=True)
-        self._ensure_index_exists()
+    def __init__(self):
+        self.database_url = os.getenv("DATABASE_URL")
+        if not self.database_url:
+            logger.warning("DATABASE_URL not set - reports will not persist!")
+            self.database_url = None
+        self._init_database()
 
-    def _ensure_index_exists(self):
-        """Ensure the index file exists"""
-        if not os.path.exists(self.storage_path):
-            self._save_index([])
-
-    def _load_index(self) -> List[Dict]:
-        """Load reports index"""
+    def _get_connection(self):
+        """Get database connection"""
+        if not self.database_url:
+            return None
         try:
-            with open(self.storage_path, 'r') as f:
-                return json.load(f)
+            return psycopg2.connect(self.database_url)
         except Exception as e:
-            logger.error(f"Error loading index: {e}")
-            return []
+            logger.error(f"Database connection error: {e}")
+            return None
 
-    def _save_index(self, reports: List[Dict]):
-        """Save reports index"""
+    def _init_database(self):
+        """Initialize database table"""
+        if not self.database_url:
+            return
+
+        conn = self._get_connection()
+        if not conn:
+            return
+
         try:
-            with open(self.storage_path, 'w') as f:
-                json.dump(reports, separators=(',', ':'), indent=2, fp=f)
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS market_reports (
+                        id VARCHAR(255) PRIMARY KEY,
+                        title TEXT NOT NULL,
+                        date VARCHAR(50) NOT NULL,
+                        timestamp TIMESTAMP NOT NULL,
+                        markdown_content TEXT,
+                        html_content TEXT,
+                        executive_summary TEXT,
+                        word_count INTEGER DEFAULT 0,
+                        reading_time_minutes INTEGER DEFAULT 1,
+                        google_docs_url TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.commit()
+                logger.info("Database table initialized")
         except Exception as e:
-            logger.error(f"Error saving index: {e}")
+            logger.error(f"Database initialization error: {e}")
+        finally:
+            conn.close()
 
     def add_report(
         self,
@@ -51,56 +73,123 @@ class ReportStore:
         google_docs_url: Optional[str] = None
     ) -> str:
         """
-        Add a new report to the index
+        Add a new report to the database
 
         Returns:
             Report ID
         """
-        reports = self._load_index()
+        if not self.database_url:
+            logger.warning("No database configured - report not saved!")
+            return f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        # Generate unique ID
-        report_id = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        conn = self._get_connection()
+        if not conn:
+            return ""
 
-        # Calculate reading time (average 200 words per minute)
-        reading_time = max(1, round(word_count / 200))
+        try:
+            # Generate unique ID
+            report_id = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-        report_entry = {
-            "id": report_id,
-            "title": title,
-            "date": date,
-            "timestamp": datetime.now().isoformat(),
-            "markdown_path": markdown_path,
-            "html_path": html_path,
-            "executive_summary": executive_summary,
-            "word_count": word_count,
-            "reading_time_minutes": reading_time,
-            "google_docs_url": google_docs_url
-        }
+            # Calculate reading time (average 200 words per minute)
+            reading_time = max(1, round(word_count / 200))
 
-        reports.insert(0, report_entry)  # Add to beginning (newest first)
-        self._save_index(reports)
+            # Read report content
+            markdown_content = ""
+            html_content = ""
 
-        logger.info(f"Added report to index: {report_id}")
-        return report_id
+            try:
+                if os.path.exists(markdown_path):
+                    with open(markdown_path, 'r', encoding='utf-8') as f:
+                        markdown_content = f.read()
+            except Exception as e:
+                logger.error(f"Error reading markdown file: {e}")
+
+            try:
+                if os.path.exists(html_path):
+                    with open(html_path, 'r', encoding='utf-8') as f:
+                        html_content = f.read()
+            except Exception as e:
+                logger.error(f"Error reading HTML file: {e}")
+
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO market_reports
+                    (id, title, date, timestamp, markdown_content, html_content,
+                     executive_summary, word_count, reading_time_minutes, google_docs_url)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    report_id, title, date, datetime.now(),
+                    markdown_content, html_content, executive_summary,
+                    word_count, reading_time, google_docs_url
+                ))
+                conn.commit()
+
+            logger.info(f"Added report to database: {report_id}")
+            return report_id
+
+        except Exception as e:
+            logger.error(f"Error adding report to database: {e}")
+            return ""
+        finally:
+            conn.close()
 
     def get_report(self, report_id: str) -> Optional[Dict]:
         """Get a specific report by ID"""
-        reports = self._load_index()
-        for report in reports:
-            if report["id"] == report_id:
-                return report
-        return None
+        if not self.database_url:
+            return None
+
+        conn = self._get_connection()
+        if not conn:
+            return None
+
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, title, date, timestamp, executive_summary,
+                           word_count, reading_time_minutes, google_docs_url
+                    FROM market_reports
+                    WHERE id = %s
+                """, (report_id,))
+                row = cur.fetchone()
+                return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Error getting report: {e}")
+            return None
+        finally:
+            conn.close()
 
     def get_all_reports(self, limit: Optional[int] = None) -> List[Dict]:
         """Get all reports (newest first)"""
-        reports = self._load_index()
-        if limit:
-            return reports[:limit]
-        return reports
+        if not self.database_url:
+            return []
+
+        conn = self._get_connection()
+        if not conn:
+            return []
+
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = """
+                    SELECT id, title, date, timestamp, executive_summary,
+                           word_count, reading_time_minutes, google_docs_url
+                    FROM market_reports
+                    ORDER BY timestamp DESC
+                """
+                if limit:
+                    query += f" LIMIT {limit}"
+
+                cur.execute(query)
+                rows = cur.fetchall()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"Error getting all reports: {e}")
+            return []
+        finally:
+            conn.close()
 
     def get_latest_report(self) -> Optional[Dict]:
         """Get the most recent report"""
-        reports = self._load_index()
+        reports = self.get_all_reports(limit=1)
         return reports[0] if reports else None
 
     def get_report_content(self, report_id: str, format: str = "markdown") -> Optional[str]:
@@ -114,33 +203,60 @@ class ReportStore:
         Returns:
             Report content or None
         """
-        report = self.get_report(report_id)
-        if not report:
+        if not self.database_url:
             return None
 
-        path_key = f"{format}_path"
-        file_path = report.get(path_key)
-
-        if not file_path or not os.path.exists(file_path):
+        conn = self._get_connection()
+        if not conn:
             return None
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
+            column = "markdown_content" if format == "markdown" else "html_content"
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT {column} FROM market_reports WHERE id = %s", (report_id,))
+                row = cur.fetchone()
+                return row[0] if row else None
         except Exception as e:
             logger.error(f"Error reading report content: {e}")
             return None
+        finally:
+            conn.close()
 
     def delete_report(self, report_id: str) -> bool:
-        """Delete a report from index"""
-        reports = self._load_index()
-        updated_reports = [r for r in reports if r["id"] != report_id]
+        """Delete a report from database"""
+        if not self.database_url:
+            return False
 
-        if len(updated_reports) < len(reports):
-            self._save_index(updated_reports)
-            return True
-        return False
+        conn = self._get_connection()
+        if not conn:
+            return False
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM market_reports WHERE id = %s", (report_id,))
+                conn.commit()
+                return cur.rowcount > 0
+        except Exception as e:
+            logger.error(f"Error deleting report: {e}")
+            return False
+        finally:
+            conn.close()
 
     def get_reports_count(self) -> int:
         """Get total number of reports"""
-        return len(self._load_index())
+        if not self.database_url:
+            return 0
+
+        conn = self._get_connection()
+        if not conn:
+            return 0
+
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(*) FROM market_reports")
+                return cur.fetchone()[0]
+        except Exception as e:
+            logger.error(f"Error counting reports: {e}")
+            return 0
+        finally:
+            conn.close()
