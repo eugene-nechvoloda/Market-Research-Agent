@@ -389,18 +389,10 @@ def handle_latest_report(respond):
         ]
     })
 
-    # Upload the full HTML report
-    html_report = latest_report.parent / latest_report.name.replace('.md', '.html')
-    if html_report.exists():
-        try:
-            app.client.files_upload_v2(
-                channel=os.environ.get("SLACK_CHANNEL_ID"),
-                file=str(html_report),
-                title=f"DAP Market Report - {report_date}",
-                initial_comment="📊 Full HTML report attached"
-            )
-        except Exception as e:
-            logger.error(f"Failed to upload report: {str(e)}")
+    # Note: Reports are now stored in database, not as files
+    # Users can access full reports via:
+    # 1. Home tab > Reports > Open button
+    # 2. Google Docs link (if configured)
 
 
 def send_user_notification(client, user_id, report_id, title, date, executive_summary, reading_time, google_docs_url, duration):
@@ -526,8 +518,7 @@ def send_report_notification(report_id, title, date, executive_summary, reading_
                                 "type": "plain_text",
                                 "text": "📄 Google Docs"
                             },
-                            "url": google_docs_url,
-                            "action_id": "open_google_docs"
+                            "url": google_docs_url
                         }
                     ]
                 },

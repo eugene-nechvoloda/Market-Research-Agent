@@ -102,6 +102,21 @@ class ReportGenerator:
 5. **EXTREME BREVITY**: Keep paragraphs short (2-4 sentences max)
 6. **NO FORBIDDEN SUBSECTIONS**: Only use explicitly listed H2/H3/H4 subsections
 
+# MARKET FOCUS:
+- **Digital Adoption Platform (DAP)** = Software that helps users learn and adopt OTHER software applications (e.g., Pendo, WalkMe, WhatFix, Apty, Appcues)
+- **NOT** digital currencies, cryptocurrency, or general "digital adoption" of non-software technologies
+- Filter out: Digital yuan, crypto, blockchain, NFTs, general tech adoption
+
+# STRATEGIC INSIGHTS GENERATION:
+- In "Strategic Insights" section, SYNTHESIZE actionable recommendations from the research data
+- Don't just extract existing insights - GENERATE new strategic recommendations
+- Use the research data to inform specific 30/60/90 day action items
+- Base recommendations on competitive gaps, market trends, and user feedback patterns
+
+# CONSISTENCY RULE:
+- If Executive Summary mentions a competitor's specific activity, that MUST appear in detail in the Competitors Spotlights section
+- Example: If summary says "Whatfix published 11 blog posts", those posts must be listed under Whatfix > Product Updates
+
 # TEMPORAL INTELLIGENCE:
 - GENERAL NEWS: 7-day window
 - PRODUCT UPDATES: 30-day window
