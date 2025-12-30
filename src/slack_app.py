@@ -637,34 +637,39 @@ def publish_reports_tab(client, user_id, report_id=None):
         blocks.extend(content_blocks)
 
         # Add footer with actions
-        blocks.extend([
-            {
-                "type": "divider"
+        blocks.append({"type": "divider"})
+
+        # Build action buttons dynamically
+        action_buttons = []
+
+        # Add Google Docs button only if valid URL exists
+        google_docs_url = report.get('google_docs_url')
+        if google_docs_url and google_docs_url.startswith("https://docs.google.com/document/d/") and "placeholder" not in google_docs_url:
+            action_buttons.append({
+                "type": "button",
+                "text": {
+                    "type": "plain_text",
+                    "text": "📄 Open in Google Docs"
+                },
+                "url": google_docs_url
+            })
+
+        # Always add Back to Reports button
+        action_buttons.append({
+            "type": "button",
+            "text": {
+                "type": "plain_text",
+                "text": "⬅️ Back to Reports"
             },
-            {
+            "action_id": "back_to_reports_list",
+            "value": "home"
+        })
+
+        if action_buttons:
+            blocks.append({
                 "type": "actions",
-                "elements": [
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "📄 Open in Google Docs"
-                        },
-                        "url": report.get('google_docs_url', '#'),
-                        "action_id": "open_google_docs_from_tab"
-                    },
-                    {
-                        "type": "button",
-                        "text": {
-                            "type": "plain_text",
-                            "text": "⬅️ Back to Reports"
-                        },
-                        "action_id": "back_to_reports_list",
-                        "value": "home"
-                    }
-                ]
-            }
-        ])
+                "elements": action_buttons
+            })
 
         client.views_publish(
             user_id=user_id,
@@ -683,8 +688,14 @@ def publish_reports_tab(client, user_id, report_id=None):
 def handle_back_to_reports(ack, body, client):
     """Handle back to reports list"""
     ack()
-    user_id = body["user"]["id"]
-    publish_reports_tab_view(client, user_id)
+
+    try:
+        user_id = body["user"]["id"]
+        logger.info(f"Back to Reports clicked by user {user_id}")
+        publish_reports_tab_view(client, user_id)
+        logger.info(f"Successfully navigated back to reports list for user {user_id}")
+    except Exception as e:
+        logger.error(f"Error handling back to reports: {e}", exc_info=True)
 
 
 # Action handler: Google Docs buttons (URL buttons - just acknowledge)
