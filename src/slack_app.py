@@ -465,6 +465,9 @@ def send_user_notification(client, user_id, report_id, title, date, executive_su
 def send_report_notification(report_id, title, date, executive_summary, reading_time, google_docs_url, duration):
     """Send enhanced report notification to channel"""
     try:
+        # Log Google Docs URL for debugging
+        logger.info(f"Sending notification with google_docs_url: {google_docs_url}")
+
         app.client.chat_postMessage(
             channel=os.environ.get("SLACK_CHANNEL_ID"),
             text=f"✅ {title} - {date} is ready!",
@@ -511,16 +514,15 @@ def send_report_notification(report_id, title, date, executive_summary, reading_
                             "style": "primary",
                             "action_id": "open_report_tab",
                             "value": report_id
-                        },
-                        {
-                            "type": "button",
-                            "text": {
-                                "type": "plain_text",
-                                "text": "📄 Google Docs"
-                            },
-                            "url": google_docs_url
                         }
-                    ]
+                    ] + ([{
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "📄 Google Docs"
+                        },
+                        "url": google_docs_url
+                    }] if google_docs_url and google_docs_url.startswith("https://docs.google.com/document/d/") and "placeholder" not in google_docs_url else [])
                 },
                 {
                     "type": "context",
