@@ -317,3 +317,103 @@ If none detected: "*No new emerging markets identified this week.*"
 
         summary = ' '.join(summary_lines)[:500]  # First 500 chars
         return summary if summary else "Weekly DAP market research report completed successfully."
+
+    def generate_from_data(
+        self,
+        research_data: Dict,
+        output_dir: str = "./reports"
+    ) -> Dict:
+        """
+        Generate report from n8n research data (or any pre-formatted data)
+
+        This method handles data from n8n workflows that have already
+        completed the research phase.
+
+        Args:
+            research_data: Research data from n8n (can be markdown or JSON)
+            output_dir: Directory to save reports
+
+        Returns:
+            Dictionary containing report paths and metadata
+        """
+        logger.info("Generating report from n8n data...")
+
+        # Create output directory
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Generate timestamp
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        date_str = datetime.now().strftime("%B %d, %Y")
+
+        try:
+            # Check if n8n provided raw markdown
+            if "raw_markdown" in research_data:
+                logger.info("Using raw markdown from n8n")
+                markdown_content = research_data["raw_markdown"]
+            else:
+                # n8n provided structured data - generate report with GPT
+                logger.info("Generating report from n8n structured data using GPT")
+
+                system_prompt = self._get_system_prompt()
+                report_template = self._get_report_template()
+
+                # Format data for GPT
+                formatted_data = json.dumps(research_data, indent=2, default=str)
+
+                user_message = f"""Generate a comprehensive DAP market research report from the n8n research data.
+
+=== N8N RESEARCH DATA ===
+{formatted_data}
+
+INSTRUCTIONS:
+1. Use the provided research data to fill ALL report sections
+2. Follow the exact structure in the template
+3. Include inline citations for all claims
+4. Ensure Strategic Insights section synthesizes actionable 30/60/90 day recommendations
+5. Filter out any irrelevant content (cryptocurrency, etc.)
+6. Be concise but comprehensive
+
+{report_template}
+"""
+
+                # Generate report with GPT
+                markdown_content = self.openai.generate_report(
+                    research_data=research_data,
+                    system_prompt=system_prompt,
+                    user_message=user_message
+                )
+
+            # Save markdown file
+            markdown_filename = f"market_report_{timestamp}.md"
+            markdown_path = output_path / markdown_filename
+
+            with open(markdown_path, 'w', encoding='utf-8') as f:
+                f.write(markdown_content)
+
+            logger.info(f"Saved markdown report: {markdown_path}")
+
+            # Convert to HTML
+            html_content = self._markdown_to_html(markdown_content, date_str)
+            html_filename = f"market_report_{timestamp}.html"
+            html_path = output_path / html_filename
+
+            with open(html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+
+            logger.info(f"Saved HTML report: {html_path}")
+
+            return {
+                "success": True,
+                "markdown_path": str(markdown_path),
+                "html_path": str(html_path),
+                "date": date_str,
+                "timestamp": timestamp
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating report from n8n data: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }

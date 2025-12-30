@@ -14,6 +14,7 @@ from .main import MarketResearchAgent
 from .scheduler import ResearchScheduler
 from .report_store import ReportStore
 from .google_docs_export import GoogleDocsExporter
+from .n8n_client import N8NClient
 from .slack_app_helpers import (
     extract_executive_summary,
     count_words,
@@ -47,6 +48,10 @@ agent = None
 scheduler = None
 report_store = ReportStore()
 google_docs_exporter = GoogleDocsExporter()
+n8n_client = N8NClient()
+
+# Track pending n8n research requests
+pending_n8n_requests = {}  # request_id -> {user_id, timestamp, status}
 
 research_status = {
     "running": False,
@@ -803,8 +808,63 @@ def handle_manual_generate(ack, body, client):
 
     # Run research in background
     def run_research_task():
-        global research_status
+        global research_status, pending_n8n_requests
         try:
+            # Check if n8n is enabled
+            if n8n_client.enabled:
+                # Use n8n workflow for research
+                logger.info("🔗 Triggering n8n research workflow...")
+
+                client.chat_postEphemeral(
+                    channel=user_id,
+                    user=user_id,
+                    text="🚀 *Research Started*\n\nTriggering n8n research workflow...\n"
+                         "You'll be notified when the research is complete."
+                )
+
+                # Trigger n8n workflow
+                trigger_result = n8n_client.trigger_research({
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "source": "slack_manual_trigger",
+                    "user_id": user_id
+                })
+
+                if trigger_result.get("success"):
+                    request_id = trigger_result.get("request_id")
+
+                    # Track pending request
+                    pending_n8n_requests[request_id] = {
+                        "user_id": user_id,
+                        "timestamp": datetime.now().isoformat(),
+                        "status": "pending"
+                    }
+
+                    logger.info(f"✅ n8n research triggered successfully: {request_id}")
+
+                    client.chat_postEphemeral(
+                        channel=user_id,
+                        user=user_id,
+                        text=f"✅ *Research Workflow Triggered*\n\n"
+                             f"Request ID: `{request_id}`\n"
+                             f"Status: {trigger_result.get('message')}\n\n"
+                             f"n8n is now processing the research. You'll receive a notification when the report is ready."
+                    )
+
+                    # Keep research status running until n8n returns results
+                    # The /n8n/webhook endpoint will handle completion
+                else:
+                    research_status["running"] = False
+                    publish_reports_tab_view(client, user_id)
+                    client.chat_postEphemeral(
+                        channel=user_id,
+                        user=user_id,
+                        text=f"❌ *Failed to trigger n8n workflow*\n\n{trigger_result.get('error')}"
+                    )
+                return
+
+            # Fallback: Use internal research agent if n8n is not enabled
+            logger.info("n8n not enabled - using internal research agent")
+
             # Check if agent is initialized, try to initialize if not
             if agent is None:
                 if not initialize_agent():
@@ -1048,6 +1108,185 @@ def home():
         "status": "running",
         "version": "1.0.0"
     }
+
+
+@flask_app.route("/n8n/webhook", methods=["POST"])
+def n8n_webhook():
+    """
+    Receive research results from n8n workflow
+
+    Expected payload:
+    {
+        "request_id": "unique_id",
+        "status": "completed" | "failed",
+        "data": {
+            "markdown": "...",  # OR
+            "json": {...},      # OR
+            "results": {...}
+        },
+        "error": "error message if failed"
+    }
+    """
+    global pending_n8n_requests
+
+    try:
+        payload = request.json
+        if not payload:
+            logger.error("n8n webhook received empty payload")
+            return {"success": False, "error": "Empty payload"}, 400
+
+        logger.info(f"📥 Received research results from n8n: {payload.get('request_id')}")
+
+        request_id = payload.get("request_id")
+        status = payload.get("status", "completed")
+        data = payload.get("data", {})
+        error = payload.get("error")
+
+        # Validate research data
+        if status == "failed" or error:
+            logger.error(f"n8n research failed: {error}")
+            # Clean up pending request
+            if request_id in pending_n8n_requests:
+                request_info = pending_n8n_requests.pop(request_id)
+                user_id = request_info.get("user_id")
+
+                # Notify user of failure
+                if user_id:
+                    app.client.chat_postEphemeral(
+                        channel=user_id,
+                        user=user_id,
+                        text=f"❌ *Research Failed*\n\nThe n8n research workflow encountered an error:\n{error}"
+                    )
+
+            return {"success": False, "error": error}, 500
+
+        # Validate data format
+        is_valid, validation_error = n8n_client.validate_research_data(data)
+        if not is_valid:
+            logger.error(f"Invalid research data from n8n: {validation_error}")
+            return {"success": False, "error": validation_error}, 400
+
+        # Format research results
+        formatted_results = n8n_client.format_research_results(data)
+
+        # Get user_id from pending requests
+        user_id = None
+        if request_id in pending_n8n_requests:
+            request_info = pending_n8n_requests.pop(request_id)
+            user_id = request_info.get("user_id")
+
+        # Process results and generate report in background thread
+        def process_n8n_results():
+            try:
+                logger.info("Processing n8n research results and generating report...")
+
+                # Generate report from n8n data
+                # This will use the existing report generation logic
+                from .report_generation.report_generator import ReportGenerator
+                from .api_clients.openai_client import OpenAIClient
+
+                report_generator = ReportGenerator(OpenAIClient())
+
+                # Generate report from research data
+                report_result = report_generator.generate_from_data(
+                    research_data=formatted_results,
+                    output_dir="reports"
+                )
+
+                if report_result.get("success"):
+                    logger.info("✅ Successfully generated report from n8n data")
+
+                    # Store report and send notifications
+                    markdown_path = report_result.get("markdown_path")
+                    html_path = report_result.get("html_path")
+
+                    if markdown_path and html_path:
+                        # Extract metadata
+                        executive_summary = extract_executive_summary(markdown_path)
+                        word_count = count_words(markdown_path)
+
+                        # Export to Google Docs
+                        google_docs_url = None
+                        if google_docs_exporter.enabled:
+                            google_docs_url = google_docs_exporter.export_report(
+                                markdown_path,
+                                f"DAP Market Report - {report_result['date']}"
+                            )
+                        else:
+                            google_docs_url = google_docs_exporter.create_google_doc_placeholder(
+                                f"DAP Market Report",
+                                report_result['date']
+                            )
+
+                        # Add to report store
+                        report_id = report_store.add_report(
+                            title=f"DAP Market Research Report - {report_result['date']}",
+                            date=report_result['date'],
+                            markdown_path=markdown_path,
+                            html_path=html_path,
+                            executive_summary=executive_summary,
+                            word_count=word_count,
+                            google_docs_url=google_docs_url
+                        )
+
+                        # Send user notification
+                        if user_id:
+                            send_user_notification(
+                                user_id=user_id,
+                                report_id=report_id,
+                                title=f"DAP Market Research Report",
+                                date=report_result['date'],
+                                executive_summary=executive_summary,
+                                reading_time=max(1, round(word_count / 200)),
+                                google_docs_url=google_docs_url
+                            )
+
+                        # Send channel notification
+                        channel_id = os.environ.get("SLACK_CHANNEL_ID")
+                        if channel_id:
+                            send_report_notification(
+                                report_id=report_id,
+                                title=f"DAP Market Research Report",
+                                date=report_result['date'],
+                                executive_summary=executive_summary,
+                                reading_time=max(1, round(word_count / 200)),
+                                google_docs_url=google_docs_url,
+                                duration=0  # n8n handles timing
+                            )
+
+                        logger.info(f"📊 Report generated and stored: {report_id}")
+                else:
+                    logger.error(f"Failed to generate report from n8n data: {report_result.get('error')}")
+                    if user_id:
+                        app.client.chat_postEphemeral(
+                            channel=user_id,
+                            user=user_id,
+                            text=f"❌ *Report Generation Failed*\n\n{report_result.get('error')}"
+                        )
+
+            except Exception as e:
+                logger.error(f"Error processing n8n results: {e}", exc_info=True)
+                if user_id:
+                    app.client.chat_postEphemeral(
+                        channel=user_id,
+                        user=user_id,
+                        text=f"❌ *Report Generation Error*\n\n{str(e)}"
+                    )
+
+        # Start processing in background
+        thread = threading.Thread(target=process_n8n_results, daemon=True)
+        thread.start()
+
+        logger.info("✅ n8n webhook processed successfully")
+        return {
+            "success": True,
+            "message": "Research results received and processing started",
+            "request_id": request_id
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling n8n webhook: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}, 500
 
 
 def main():
