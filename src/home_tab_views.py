@@ -128,57 +128,31 @@ def build_reports_view(report_store, research_status):
             }
         })
 
-        # Add report cards in grid-like layout (2 per row using fields)
-        for i in range(0, len(reports), 2):
-            report1 = reports[i]
-            report2 = reports[i + 1] if i + 1 < len(reports) else None
-
-            # Create section with two reports side by side
-            section = {
+        # Add report cards one per row (not paired anymore)
+        for report in reports:
+            # Report info section
+            blocks.append({
                 "type": "section",
-                "fields": [
-                    {
-                        "type": "mrkdwn",
-                        "text": f"*{report1['title']}*\n📅 {report1['date']}\n⏱️ {report1['reading_time_minutes']} min read"
-                    }
-                ]
-            }
-
-            if report2:
-                section["fields"].append({
+                "text": {
                     "type": "mrkdwn",
-                    "text": f"*{report2['title']}*\n📅 {report2['date']}\n⏱️ {report2['reading_time_minutes']} min read"
-                })
-
-            blocks.append(section)
-
-            # Add action buttons for the reports
-            action_elements = [
-                {
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": f"📖 Open"
-                    },
-                    "action_id": "view_specific_report",
-                    "value": report1['id']
+                    "text": f"*{report['title']}*\n📅 {report['date']}\n⏱️ {report['reading_time_minutes']} min read"
                 }
-            ]
+            })
 
-            if report2:
-                action_elements.append({
-                    "type": "button",
-                    "text": {
-                        "type": "plain_text",
-                        "text": f"📖 Open"
-                    },
-                    "action_id": "view_specific_report",
-                    "value": report2['id']
-                })
-
+            # Action button for this specific report
             blocks.append({
                 "type": "actions",
-                "elements": action_elements
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "📖 Open"
+                        },
+                        "action_id": "view_specific_report",
+                        "value": report['id']
+                    }
+                ]
             })
 
             blocks.append({"type": "divider"})
