@@ -703,6 +703,46 @@ def handle_back_to_reports(ack, body, client):
         logger.error(f"Error handling back to reports: {e}", exc_info=True)
 
 
+# Action handler: Cancel research
+@app.action("cancel_research")
+def handle_cancel_research(ack, body, client):
+    """Handle research cancellation"""
+    ack()
+
+    global research_status, pending_n8n_requests
+
+    try:
+        user_id = body["user"]["id"]
+        logger.info(f"Research cancellation requested by user {user_id}")
+
+        # Reset research status
+        research_status["running"] = False
+
+        # Clear any pending n8n requests for this user
+        requests_to_remove = [
+            req_id for req_id, req_info in pending_n8n_requests.items()
+            if req_info.get("user_id") == user_id
+        ]
+        for req_id in requests_to_remove:
+            pending_n8n_requests.pop(req_id, None)
+            logger.info(f"Cleared pending n8n request: {req_id}")
+
+        # Update home tab to remove progress indicator
+        publish_reports_tab_view(client, user_id)
+
+        # Send confirmation message
+        client.chat_postEphemeral(
+            channel=user_id,
+            user=user_id,
+            text="✅ *Research Cancelled*\n\nThe research process has been stopped. You can start a new research anytime."
+        )
+
+        logger.info(f"Research cancelled successfully for user {user_id}")
+
+    except Exception as e:
+        logger.error(f"Error cancelling research: {e}", exc_info=True)
+
+
 # Action handler: Google Docs buttons (URL buttons - just acknowledge)
 @app.action("open_google_docs")
 def handle_open_google_docs(ack):

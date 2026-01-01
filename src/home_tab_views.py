@@ -105,6 +105,39 @@ def build_reports_view(report_store, research_status):
                 }
             },
             {
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "text": "❌ Cancel Research"
+                        },
+                        "style": "danger",
+                        "action_id": "cancel_research",
+                        "value": "cancel",
+                        "confirm": {
+                            "title": {
+                                "type": "plain_text",
+                                "text": "Cancel Research?"
+                            },
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "Are you sure you want to cancel the current research?\n\nThis will stop the research process and reset the status."
+                            },
+                            "confirm": {
+                                "type": "plain_text",
+                                "text": "Yes, Cancel It"
+                            },
+                            "deny": {
+                                "type": "plain_text",
+                                "text": "No, Keep Running"
+                            }
+                        }
+                    }
+                ]
+            },
+            {
                 "type": "context",
                 "elements": [
                     {
