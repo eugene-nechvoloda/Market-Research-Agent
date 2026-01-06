@@ -1170,12 +1170,43 @@ def n8n_webhook():
     global pending_n8n_requests
 
     try:
-        payload = request.json
+        # Handle different content types
+        content_type = request.content_type or 'application/json'
+        logger.info(f"📥 n8n webhook called - Content-Type: {content_type}")
+
+        # Try to get JSON payload
+        payload = None
+
+        # Method 1: Try request.json (works if Content-Type is application/json)
+        try:
+            payload = request.json
+        except Exception as e:
+            logger.warning(f"Could not parse as JSON from request.json: {e}")
+
+        # Method 2: If that fails, try parsing raw data
+        if not payload:
+            try:
+                raw_data = request.get_data(as_text=True)
+                logger.info(f"Raw data received: {raw_data[:200]}")  # Log first 200 chars
+
+                if raw_data:
+                    import json
+                    payload = json.loads(raw_data)
+            except Exception as e:
+                logger.error(f"Could not parse raw data as JSON: {e}")
+
+        # Validate payload exists
         if not payload:
             logger.error("n8n webhook received empty payload")
-            return {"success": False, "error": "Empty payload"}, 400
+            return {"success": False, "error": "Empty payload - check n8n HTTP node configuration"}, 400
 
-        logger.info(f"📥 Received research results from n8n: {payload.get('request_id')}")
+        # Validate payload is a dict
+        if not isinstance(payload, dict):
+            logger.error(f"Payload is not a dict, got: {type(payload)}")
+            return {"success": False, "error": f"Payload must be JSON object, got {type(payload).__name__}"}, 400
+
+        logger.info(f"✅ Successfully parsed payload: {payload.get('request_id')}")
+        logger.debug(f"Full payload: {payload}")
 
         request_id = payload.get("request_id")
         status = payload.get("status", "completed")
