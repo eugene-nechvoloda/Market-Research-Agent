@@ -342,9 +342,10 @@ If none detected: "*No new emerging markets identified this week.*"
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
 
-        # Generate timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        date_str = datetime.now().strftime("%B %d, %Y")
+        # Generate timestamp with microseconds for uniqueness
+        now = datetime.now()
+        timestamp = now.strftime("%Y%m%d_%H%M%S") + f"_{now.microsecond // 1000:03d}"
+        date_str = now.strftime("%B %d, %Y")
 
         try:
             # Check if n8n provided raw markdown
